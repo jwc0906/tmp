@@ -52,7 +52,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'SVHN', 'MNIST', 'VECTOR'], help='dataset')
 
     # other setting
     parser.add_argument('--cosine', action='store_true',
@@ -120,15 +120,25 @@ def set_loader(opt):
     if opt.dataset == 'cifar10':
         mean = (0.4914, 0.4822, 0.4465)
         std = (0.2023, 0.1994, 0.2010)
+        opt.size=32
     elif opt.dataset == 'cifar100':
         mean = (0.5071, 0.4867, 0.4408)
         std = (0.2675, 0.2565, 0.2761)
+        opt.size=32
+    elif opt.dataset == 'SVHN':
+        mean= (0.5,0.5,0.5)
+        std= (0.5,0.5,0.5)
+        opt.size=32
+    elif opt.dataset =="MNIST":
+        opt.size=28
+        mean= (0.5,)
+        std= (0.5,)
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
     normalize = transforms.Normalize(mean=mean, std=std)
 
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(size=32, scale=(0.2, 1.)),
+        transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         normalize,
@@ -141,18 +151,31 @@ def set_loader(opt):
 
     if opt.dataset == 'cifar10':
         train_dataset = datasets.CIFAR10(root=opt.data_folder,
-                                         transform=train_transform,
-                                         download=True)
+                                        transform=train_transform,
+                                        download=True)
         val_dataset = datasets.CIFAR10(root=opt.data_folder,
-                                       train=False,
-                                       transform=val_transform)
+                                        train=False,
+                                        transform=val_transform)
     elif opt.dataset == 'cifar100':
         train_dataset = datasets.CIFAR100(root=opt.data_folder,
-                                          transform=train_transform,
-                                          download=True)
+                                        transform=train_transform,
+                                        download=True)
         val_dataset = datasets.CIFAR100(root=opt.data_folder,
                                         train=False,
                                         transform=val_transform)
+    elif opt.dataset== 'SVHN':
+        train_dataset = datasets.SVHN(root=opt.data_folder,
+                                        split='train',
+                                        transform=train_transform,
+                                        download=True)
+        val_dataset = datasets.SVHN(root=opt.data_folder,
+                                        split='test',
+                                        transform=val_transform,
+                                        download=True)
+    elif opt.dataset=="MNIST":
+        train_dataset= datasets.MNIST(root=opt.data_folder, transform=train_transform, train=True, download=True)
+        val_dataset= datasets.MNIST(root=opt.data_folder, transform=val_transform, train=False, download=True)
+
     else:
         raise ValueError(opt.dataset)
 

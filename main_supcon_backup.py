@@ -16,12 +16,11 @@ from torch.utils.data import Dataset, DataLoader
 from util import TwoCropTransform, AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate
 from util import set_optimizer, save_model
-from networks.supcon_net import SupConResNet
+from networks.resnet_big import SupConResNet
 from losses import SupConLoss
 
 import numpy as np
 
-from data_loader import set_loader
 
 try:
     import apex
@@ -87,8 +86,7 @@ def parse_option():
     parser.add_argument('--imbalance_ratio', type=float, help='imbalance_ratio')
     parser.add_argument('--class_num', type=int, help='imbalance_ratio')
     parser.add_argument('--total_data_num', type=int, help='imbalance_ratio')
-    parser.add_argument('--imbalance_order', type=str, default='ascent', choices=['ascent', 'descent'])
-    
+
     #aug
     parser.add_argument('--aug', type=str, default='simclr')
     parser.add_argument('--aug_std', type=float)
@@ -134,7 +132,7 @@ def parse_option():
         else:
             opt.warmup_to = opt.learning_rate
     
-    opt.model_name= '{}_ir_{}_i_order_{}__total_data_{}'.format(opt.model_name, opt.imbalance_ratio, opt.imbalance_order, opt.total_data_num)
+    opt.model_name= '{}_ir_{}_td_{}_aug_{}_AUGSTD_{}'.format(opt.model_name, opt.imbalance_ratio, opt.total_data_num, opt.aug, opt.aug_std)
 
     opt.tb_folder = os.path.join(opt.tb_path, opt.model_name)
     if not os.path.isdir(opt.tb_folder):
@@ -219,6 +217,170 @@ class CustomDataset(Dataset):
         x= TwoCropTransform(self.transform)(self.data_x[idx])
         y= self.data_y[idx]
         return x, y
+
+
+def set_loader(opt):
+    # construct data loader
+    if opt.dataset == 'cifar10':
+        mean = (0.4914, 0.4822, 0.4465)
+        std = (0.2023, 0.1994, 0.2010)
+    elif opt.dataset == 'cifar100':
+        mean = (0.5071, 0.4867, 0.4408)
+        std = (0.2675, 0.2565, 0.2761)
+    elif opt.dataset == 'SVHN':
+        mean= (0.5, 0.5, 0.5)
+        std= (0.5, 0.5, 0.5)
+    elif opt.dataset=='MNIST':
+        mean= (0.5,)
+        std= (0.5,)
+        opt.size= 28
+    elif opt.dataset == "VECTOR":
+        mean= (0.5,)
+        std=(0.5,)
+        opt.size= 28
+    elif opt.dataset == 'path':
+        mean = eval(opt.mean)
+        std = eval(opt.mean)
+    else:
+        raise ValueError('dataset not supported: {}'.format(opt.dataset))
+    normalize = transforms.Normalize(mean=mean, std=std)
+    
+    if opt.dataset=="VECTOR":
+        if opt.aug=='simclr':
+            train_transform = transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomApply([
+                    transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+                ], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.ToTensor(),
+                normalize,
+            ])
+        else: #salt&papper
+            train_transform = transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.ToTensor(),
+                normalize,
+                AddGaussianNoise(0., opt.aug_std),
+            ])
+    else:
+        if opt.aug=='simclr':
+            train_transform = transforms.Compose([
+                transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomApply([
+                    transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+                ], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.ToTensor(),
+                normalize,
+            ])
+        else: #salt&papper
+            train_transform = transforms.Compose([
+                transforms.ToTensor(),
+                normalize,
+                AddGaussianNoise(0., opt.aug_std),
+            ])  
+
+
+    if opt.dataset == 'cifar10':
+        train_dataset = datasets.CIFAR10(root=opt.data_folder,
+                                         transform=TwoCropTransform(train_transform),
+                                         download=True)
+    elif opt.dataset == 'cifar100':
+        train_dataset = datasets.CIFAR100(root=opt.data_folder,
+                                          transform=TwoCropTransform(train_transform),
+                                          download=True)
+    elif opt.dataset == 'SVHN':
+        train_dataset= datasets.SVHN(root=opt.data_folder, transform=TwoCropTransform(train_transform), download=True)
+    elif opt.dataset=='MNIST':
+        train_dataset= datasets.MNIST(root=opt.data_folder, transform=TwoCropTransform(train_transform), download=True)
+    elif opt.dataset== "VECTOR":
+        train_dataset= CustomDataset(transform= train_transform, opt=opt)
+
+    elif opt.dataset == 'path':
+        train_dataset = datasets.ImageFolder(root=opt.data_folder,
+                                            transform=TwoCropTransform(train_transform))
+    else:
+        raise ValueError(opt.dataset)
+
+    print(opt.dataset)
+    
+    ### label imbalance 
+    import math
+    
+    if opt.dataset !='VECTOR':
+
+        imbalance_ratio=opt.imbalance_ratio
+        class_num=opt.class_num
+        imbalance_r= math.pow(imbalance_ratio, 1/(class_num-1))
+        total_data_num=opt.total_data_num
+
+        if imbalance_ratio==1:
+            labelNum= [total_data_num//class_num]*class_num
+        else:
+            initial=0
+            totals=[]
+            total=0
+            while True:
+                preLabelNum=[]
+                initial+=0.0001
+                total=0
+                for i in range(class_num):
+                    item= initial*math.pow(imbalance_r, i)
+                    total+=item
+                    preLabelNum.append(item)
+                labelNum=[round(i) for i in preLabelNum]
+                if sum(labelNum)>=total_data_num:
+                    break
+
+            labelNum.reverse()
+        print("[Imbalance ratio]", imbalance_ratio)
+        print(labelNum)
+        print(sum(labelNum))
+
+        
+        if opt.dataset=='SVHN':
+            labels= np.array(train_dataset.labels)
+        else:
+            labels= np.array(train_dataset.targets)
+
+        lst = []
+        top=0
+        for i in range(class_num):
+            idx= np.arange(len(labels))[labels==i]
+            selectedIdx = np.random.choice(idx, labelNum[i], replace=False).tolist()
+            lst += selectedIdx
+            #labelProb[top:top+labelNum[i]] = 1 / (labelNum[i] * probMul[i])
+            top+=labelNum[i]
+
+        lst= np.array(lst)
+        np.save(os.path.join(opt.model_path, opt.model_name)+"/index.npy", lst)
+        os.path.join(opt.model_path, opt.model_name) 
+        if opt.dataset=='SVHN':
+            labels= np.array(train_dataset.labels)
+        else:
+            labels= np.array(train_dataset.targets)
+
+        train_dataset.data= train_dataset.data[lst]
+        
+        if opt.dataset=='SVHN':
+            train_dataset.labels= labels[lst].tolist()
+        else:
+            train_dataset.targets= labels[lst].tolist()
+
+
+    train_sampler = None
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=opt.batch_size, shuffle=True,
+        num_workers=opt.num_workers, pin_memory=True, sampler=train_sampler)
+    
+
+    return train_loader
+
+
 
 
 

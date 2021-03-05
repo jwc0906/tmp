@@ -6,22 +6,22 @@ import argparse
 import time
 import math
 
+import numpy as np
 import tensorboard_logger as tb_logger
 import torch
 import torch.backends.cudnn as cudnn
 from torchvision import transforms, datasets
 
-from torch.utils.data import Dataset, DataLoader
-
 from util import TwoCropTransform, AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate
 from util import set_optimizer, save_model
-from networks.supcon_net import SupConResNet
+from networks.resnet_big import SupConResNet
 from losses import SupConLoss
 
-import numpy as np
 
-from data_loader import set_loader
+DIR_PATH= './save/SupCon/SVHN_models/SimCLR_SVHN_resnet50_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_1.0_td_10000'
+
+
 
 try:
     import apex
@@ -33,9 +33,9 @@ except ImportError:
 def parse_option():
     parser = argparse.ArgumentParser('argument for training')
 
-    parser.add_argument('--print_freq', type=int, default=10,
+    parser.add_argument('--print_freq', type=int, default=10*20,
                         help='print frequency')
-    parser.add_argument('--save_freq', type=int, default=50,
+    parser.add_argument('--save_freq', type=int, default=50*20,
                         help='save frequency')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='batch_size')
@@ -59,7 +59,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100', 'SVHN', "MNIST","VECTOR", 'path'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'SVHN', 'path'], help='dataset')
     parser.add_argument('--mean', type=str, help='mean of dataset in path in form of str tuple')
     parser.add_argument('--std', type=str, help='std of dataset in path in form of str tuple')
     parser.add_argument('--data_folder', type=str, default=None, help='path to custom dataset')
@@ -87,11 +87,10 @@ def parse_option():
     parser.add_argument('--imbalance_ratio', type=float, help='imbalance_ratio')
     parser.add_argument('--class_num', type=int, help='imbalance_ratio')
     parser.add_argument('--total_data_num', type=int, help='imbalance_ratio')
-    parser.add_argument('--imbalance_order', type=str, default='ascent', choices=['ascent', 'descent'])
     
-    #aug
-    parser.add_argument('--aug', type=str, default='simclr')
-    parser.add_argument('--aug_std', type=float)
+    # index
+    parser.add_argument('--index_path', type=str, help='index_path')
+    
 
 
     opt = parser.parse_args()
@@ -105,8 +104,8 @@ def parse_option():
     # set the path according to the environment
     if opt.data_folder is None:
         opt.data_folder = './datasets/'
-    opt.model_path = './save/SupCon/{}_models'.format(opt.dataset)
-    opt.tb_path = './save/SupCon/{}_tensorboard'.format(opt.dataset)
+    opt.model_path = './save_second/SupCon/{}_models'.format(opt.dataset)
+    opt.tb_path = './save_second/SupCon/{}_tensorboard'.format(opt.dataset)
 
     iterations = opt.lr_decay_epochs.split(',')
     opt.lr_decay_epochs = list([])
@@ -126,7 +125,7 @@ def parse_option():
     if opt.warm:
         opt.model_name = '{}_warm'.format(opt.model_name)
         opt.warmup_from = 0.01
-        opt.warm_epochs = 10
+        opt.warm_epochs = 10 * 20
         if opt.cosine:
             eta_min = opt.learning_rate * (opt.lr_decay_rate ** 3)
             opt.warmup_to = eta_min + (opt.learning_rate - eta_min) * (
@@ -134,7 +133,7 @@ def parse_option():
         else:
             opt.warmup_to = opt.learning_rate
     
-    opt.model_name= '{}_ir_{}_i_order_{}__total_data_{}'.format(opt.model_name, opt.imbalance_ratio, opt.imbalance_order, opt.total_data_num)
+    opt.model_name= '{}_ir_{}_td_{}'.format(opt.model_name, opt.imbalance_ratio, opt.total_data_num)
 
     opt.tb_folder = os.path.join(opt.tb_path, opt.model_name)
     if not os.path.isdir(opt.tb_folder):
@@ -147,78 +146,80 @@ def parse_option():
     return opt
 
 
+def set_loader(opt):
+    # construct data loader
+    if opt.dataset == 'cifar10':
+        mean = (0.4914, 0.4822, 0.4465)
+        std = (0.2023, 0.1994, 0.2010)
+    elif opt.dataset == 'cifar100':
+        mean = (0.5071, 0.4867, 0.4408)
+        std = (0.2675, 0.2565, 0.2761)
+    elif opt.dataset == 'SVHN':
+        mean= (0.5, 0.5, 0.5)
+        std= (0.5, 0.5, 0.5)
+    elif opt.dataset == 'path':
+        mean = eval(opt.mean)
+        std = eval(opt.mean)
+    else:
+        raise ValueError('dataset not supported: {}'.format(opt.dataset))
+    normalize = transforms.Normalize(mean=mean, std=std)
 
-class AddGaussianNoise(object):
-    def __init__(self, mean=0., std=1.):
-        self.std = std
-        self.mean = mean
-    def __call__(self, tensor):
-        rnd= torch.randn(tensor.size())
-        ### maskting ###
-        #rnd[0,0,0]=0
-        #rnd[0,0,1]=0
-        #rnd[0,0,2]=0
-        return tensor + rnd * self.std + self.mean
+    train_transform = transforms.Compose([
+        transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomApply([
+            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+        ], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.ToTensor(),
+        normalize,
+    ])
+
+    if opt.dataset == 'cifar10':
+        train_dataset = datasets.CIFAR10(root=opt.data_folder,
+                                         transform=TwoCropTransform(train_transform),
+                                         download=True)
+    elif opt.dataset == 'cifar100':
+        train_dataset = datasets.CIFAR100(root=opt.data_folder,
+                                          transform=TwoCropTransform(train_transform),
+                                          download=True)
+    elif opt.dataset == 'SVHN':
+        train_dataset= datasets.SVHN(root=opt.data_folder, transform=TwoCropTransform(train_transform), download=True)
+    elif opt.dataset == 'path':
+        train_dataset = datasets.ImageFolder(root=opt.data_folder,
+                                            transform=TwoCropTransform(train_transform))
+    else:
+        raise ValueError(opt.dataset)
+
+    ### loaded index
+    lst=np.load(DIR_PATH+"/index.npy")
     
-    def __repr__(self):
-        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+
+    labelProb=1/np.load(DIR_PATH+"/weight.npy")
+    interval= labelProb.max()- labelProb.min()
+    labelProb= (labelProb - labelProb.min())/interval
+    labelProb*=9
+    labelProb+=1
+
+    labels= np.array(train_dataset.labels)
+    train_dataset.data= train_dataset.data[lst]
+    train_dataset.labels= labels[lst].tolist()
+
+
+    labels= np.array(train_dataset.labels)
+
+
+    train_sampler = torch.utils.data.WeightedRandomSampler(labelProb, opt.batch_size, replacement=False)
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
+        num_workers=opt.num_workers, pin_memory=True, sampler=train_sampler)
 
 
 
-
-# make vector dataset
-DIM=1*28*28
-DATA_NUM=10000
-NUM_EACH_CLASS= [9000, 910,  90]
-CLASS_NUM=3
-
-DATA_STD=0.2
-
-MU_C= np.zeros((CLASS_NUM,DIM))
-for i in range(CLASS_NUM):
-        MU_C[i,i]=1
+    return train_loader
 
 
-def normal_nd(num, dim, mu_list, std):
-    result= np.zeros((num, dim))
-    for i in range(dim):
-        result[:,i]= np.random.normal(mu_list[i], std, num)
-    return result
-
-
-class CustomDataset(Dataset):
-    def __init__(self, transform, opt):
-        # dataset
-        self.transform= transform
-        data_x= np.zeros((DATA_NUM, DIM))
-        data_y= np.zeros(DATA_NUM)
-
-        num_c_top=0
-        for i in range(CLASS_NUM):
-            data_x[num_c_top:num_c_top+ NUM_EACH_CLASS[i]]= normal_nd(num= NUM_EACH_CLASS[i], dim= DIM, mu_list=MU_C[i], std=DATA_STD)
-            data_y[num_c_top:num_c_top+ NUM_EACH_CLASS[i]]= i
-            num_c_top+=NUM_EACH_CLASS[i]
-
-        # self.data_x= torch.Tensor(data_x)
-        # self.data_y= torch.Tensor(data_y)
-        self.data_x=data_x.reshape((-1,28,28,1)).astype(np.float32)
-        self.data_y=data_y
-        _min= self.data_x.min()
-        _max= self.data_x.max()
-        interval= _max - _min
-        self.data_x=(((self.data_x - _min)/interval)*254).astype(np.uint8)
-        
-
-        #save
-        np.save(os.path.join(opt.model_path, opt.model_name)+"/data_x.npy", self.data_x)
-        np.save(os.path.join(opt.model_path, opt.model_name)+"/data_y.npy", self.data_y)
-
-    def __len__(self):
-        return self.data_x.shape[0]
-    def __getitem__(self,idx):
-        x= TwoCropTransform(self.transform)(self.data_x[idx])
-        y= self.data_y[idx]
-        return x, y
 
 
 
@@ -253,7 +254,6 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     end = time.time()
     for idx, (images, labels) in enumerate(train_loader):
         data_time.update(time.time() - end)
-        
 
         images = torch.cat([images[0], images[1]], dim=0)
         if torch.cuda.is_available():
@@ -289,7 +289,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
         end = time.time()
 
         # print info
-        if (idx + 1) % opt.print_freq == 0:
+        if (epoch + 1) % opt.print_freq == 0:
             print('Train: [{0}][{1}/{2}]\t'
                   'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
@@ -317,7 +317,7 @@ def main():
     logger = tb_logger.Logger(logdir=opt.tb_folder, flush_secs=2)
     print("1")
     # training routine
-    for epoch in range(1, opt.epochs + 1):
+    for epoch in range(1, opt.epochs*20 + 1):
         adjust_learning_rate(opt, optimizer, epoch)
         # train for one epoch
         time1 = time.time()

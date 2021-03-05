@@ -72,6 +72,10 @@ class Bottleneck(nn.Module):
             return out
 
 
+
+
+
+
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, in_channel=3, zero_init_residual=False):
         super(ResNet, self).__init__()
@@ -124,8 +128,59 @@ class ResNet(nn.Module):
         return out
 
 
+
+
+
+class FNN(nn.Module):
+    def __init__(self, in_channel=3, width=32):
+        super(FNN, self).__init__()
+        
+        self.width=width
+        self.in_channel= in_channel
+
+        self.fc1= nn.Linear(width*width*in_channel, 1024)
+        self.bn1= nn.BatchNorm1d(1024)
+        self.fc2= nn.Linear(1024,512)
+        self.bn2= nn.BatchNorm1d(512)
+        self.fc3= nn.Linear(512,512)
+        self.bn3= nn.BatchNorm1d(512)
+        
+    def forward(self,x):
+        x= x.view(-1, self.width*self.width*self.in_channel)
+        h1= F.relu(self.bn1(self.fc1(x)))
+        h2= F.relu(self.bn2(self.fc2(h1)))
+        h3= self.bn3(self.fc3(h2))
+
+        return h3
+
+
+
+
+
+
+def fnn3(**kwargs):
+	return FNN()
+
+def fnn3_mnist(**kwargs):
+        return FNN(in_channel=1, width=28)
+
+def resnet10(**kwargs):
+    return ResNet(BasicBlock, [1, 1, 1, 1], **kwargs)
+
+def resnet10_mnist(**kwargs):
+    return ResNet(BasicBlock, [1, 1, 1, 1], in_channel=1, **kwargs)
+
+
+def resnet14(**kwargs):
+    return ResNet(BasicBlock, [2, 2, 1, 1], **kwargs)
+
+
 def resnet18(**kwargs):
     return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
+
+
+def resnet18_mnist(**kwargs):
+    return ResNet(BasicBlock, [2, 2, 2, 2], in_channel=1, **kwargs)
 
 
 def resnet34(**kwargs):
@@ -141,6 +196,13 @@ def resnet101(**kwargs):
 
 
 model_dict = {
+
+    'fnn3_mnist': [fnn3_mnist, 512],
+    'resnet10_mnist': [resnet10_mnist, 512],
+    'resnet18_mnist': [resnet18_mnist, 512],
+    'fnn3': [fnn3, 512],
+    'resnet10': [resnet10, 512],
+    'resnet14': [resnet14, 512],
     'resnet18': [resnet18, 512],
     'resnet34': [resnet34, 512],
     'resnet50': [resnet50, 2048],

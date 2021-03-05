@@ -50,7 +50,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'SVHN', 'MNIST', 'VECTOR'], help='dataset')
 
     # other setting
     parser.add_argument('--cosine', action='store_true',
@@ -94,6 +94,12 @@ def parse_option():
         opt.n_cls = 10
     elif opt.dataset == 'cifar100':
         opt.n_cls = 100
+    elif opt.dataset == 'SVHN':
+        opt.n_cls= 10
+    elif opt.dataset=="MNIST":
+        opt.n_cls=10
+    elif opt.dataset=='VECTOR':
+        opt.n_cls=3
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
 
@@ -224,6 +230,54 @@ def validate(val_loader, model, classifier, criterion, opt):
     return losses.avg, top1.avg
 
 
+def final_validate(val_loader, model, classifier, criterion, opt):
+    """validation"""
+    model.eval()
+    classifier.eval()
+
+    batch_time = AverageMeter()
+    losses = AverageMeter()
+    top1 = AverageMeter()
+
+    import numpy as np
+    resultTable = np.zeros((10,10), dtype=int)
+
+    with torch.no_grad():
+        end = time.time()
+        for idx, (images, labels) in enumerate(val_loader):
+            images = images.float().cuda()
+            labels = labels.cuda()
+            bsz = labels.shape[0]
+
+            # forward
+            output = classifier(model.encoder(images))
+            loss = criterion(output, labels)
+
+            # update metric
+            losses.update(loss.item(), bsz)
+            acc1, acc5 = accuracy(output, labels, topk=(1, 5))
+            top1.update(acc1[0], bsz)
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            output = output.argmax(axis=1).cpu().numpy()
+            labels = labels.cpu().numpy()
+
+            for i in range(labels.shape[0]):
+                resultTable[labels[i]][output[i]] += 1
+            if idx % opt.print_freq == 0:
+                print('Test: [{0}/{1}]\t'
+                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                      'Acc@1 {top1.val:.3f} ({top1.avg:.3f})'.format(
+                       idx, len(val_loader), batch_time=batch_time,
+                       loss=losses, top1=top1))
+
+    print(resultTable)
+    #print(' * Acc@1 {top1.avg:.3f}'.format(top1=top1))
+
 def main():
     best_acc = 0
     opt = parse_option()
@@ -253,6 +307,7 @@ def main():
         loss, val_acc = validate(val_loader, model, classifier, criterion, opt)
         if val_acc > best_acc:
             best_acc = val_acc
+    final_validate(val_loader, model, classifier, criterion, opt)
 
     print('best accuracy: {:.2f}'.format(best_acc))
 
