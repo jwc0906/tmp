@@ -15,7 +15,7 @@ python main_supcon.py --batch_size 512 \
   --model resnet50 \
   --dataset cifar10 \
   --imbalance_order ascent \
-  --imbalance_ratio 1 \
+  --imbalance_ratio 150 \
   --total_data_num 10000\
 ```
   
