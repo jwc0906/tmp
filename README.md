@@ -1,7 +1,4 @@
 # Commends
-<p align="center">
-  <img src="figures/teaser.png" width="700">
-</p>
 
 Usage:
 ```python
