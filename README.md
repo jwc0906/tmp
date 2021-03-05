@@ -18,10 +18,10 @@ python main_supcon.py --batch_size 512 \
   --imbalance_ratio 1 \
   --total_data_num 10000\
 ```
-
-model: [resnet50, VGG]
-dataset: [cifar100, cifar10, SVHN]
-imbalance order: [ascent, descent]
-imbalance ratio: float
-total data num: int
+  
+model: [resnet50, VGG]  
+dataset: [cifar100, cifar10, SVHN]  
+imbalance order: [ascent, descent]  
+imbalance ratio: float  
+total data num: int  
 
