@@ -82,7 +82,7 @@ def set_loader(opt, stage=1):
         opt.class_num= 10
      
     elif opt.dataset == 'tiny-imagenet-200':
-        train_dataset = datasets.ImageFolder(root=opt.data_folder+"/tiny-imagenet-200",
+        train_dataset = datasets.ImageFolder(root=opt.data_folder+"/tiny-imagenet-200/train",
                                             transform=TwoCropTransform(train_transform))
         opt.class_num=200
     else:
@@ -122,7 +122,6 @@ def set_loader(opt, stage=1):
         print(labelNum)
         print(sum(labelNum))
         
-        import pdb; pdb.set_trace()
         if opt.dataset=='SVHN':
             labels= np.array(train_dataset.labels)
         else:
@@ -135,7 +134,7 @@ def set_loader(opt, stage=1):
             selectedIdx = np.random.choice(idx, labelNum[i], replace=False).tolist()
             lst += selectedIdx
             top+=labelNum[i]
-
+        
         lst= np.array(lst)
         np.save(os.path.join(opt.model_path, opt.model_name)+"/index.npy", lst)
         
@@ -162,8 +161,19 @@ def set_loader(opt, stage=1):
         labels= np.array(train_dataset.labels)
     else:
         labels= np.array(train_dataset.targets)
+        
+    if opt.dataset=="tiny-imagenet-200":
+        tmp_data=[]
+        tmp_targets=[]
+        for idxx in lst:
+            tmp_data.append(train_dataset.imgs[idxx])
+            tmp_targets.append(train_dataset[idxx][1])
+        train_dataset.imgs=tmp_data
+        train_dataset.samples=tmp_data
+        train_dataset.targets= tmp_targets
 
-    train_dataset.data= train_dataset.data[lst]
+    else:
+        train_dataset.data= train_dataset.data[lst]
 
     if opt.dataset=='SVHN':
         train_dataset.labels= labels[lst].tolist()

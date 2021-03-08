@@ -59,7 +59,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='SVHN',
-                        choices=['cifar10', 'cifar100', 'SVHN', "MNIST", "VECTOR"], help='dataset')
+                        choices=['cifar10', 'cifar100', 'SVHN', "MNIST", "VECTOR", "tiny-imagenet-200"], help='dataset')
 
     # other setting
     parser.add_argument('--cosine', action='store_true',
@@ -112,6 +112,8 @@ def parse_option():
         opt.n_cls=10
     elif opt.dataset=="VECTOR":
         opt.n_cls=3
+    elif opt.dataset=="tiny-imagenet-200":
+        opt.n_cls=200
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
 
@@ -161,22 +163,27 @@ def main():
     model, classifier, criterion = set_model(opt)
 
     #dataset
-
     if opt.dataset == 'cifar10':
         mean = (0.4914, 0.4822, 0.4465)
         std = (0.2023, 0.1994, 0.2010)
+        opt.size= 32
+
     elif opt.dataset == 'cifar100':
         mean = (0.5071, 0.4867, 0.4408)
         std = (0.2675, 0.2565, 0.2761)
-    elif opt.dataset== 'SVHN':
+        opt.size= 32
+
+    elif opt.dataset == 'SVHN':
         mean= (0.5, 0.5, 0.5)
         std= (0.5, 0.5, 0.5)
-    elif opt.dataset == "MNIST":
-        mean= (0.5,)
-        std= (0.5,)
-    elif opt.dataset == "VECTOR":
-        mean= (0.5,)
-        std=(0.5,)
+        opt.size= 32
+    elif opt.dataset == "tiny-imagenet-200":
+        mean= (0.485, 0.456, 0.406)
+        std= (0.229, 0.224, 0.225)
+        opt.size= 64
+
+
+
 
     import numpy as np
     normalize = transforms.Normalize(mean=mean, std=std)
@@ -199,12 +206,30 @@ def main():
                                           download=True)
     elif opt.dataset == 'SVHN':
         train_dataset= datasets.SVHN(root=opt.data_folder, transform=standard_transform, download=True)
+    
+    elif opt.dataset == 'tiny-imagenet-200':
+        train_dataset = datasets.ImageFolder(root=opt.data_folder+"/tiny-imagenet-200/train", 
+                transform= standard_transform)
 
 
     train_idx=np.load(opt.dir_path+"/index.npy")
-    train_dataset.data= train_dataset.data[train_idx]
     
-    if opt.dataset=="SVHN":
+    if opt.dataset=="tiny-imagenet-200":
+        tmp_data=[]
+        tmp_targets=[]
+        for idxx in train_idx:
+            tmp_data.append(train_dataset.imgs[idxx])
+            tmp_targets.append(train_dataset[idxx][1])
+        train_dataset.imgs=tmp_data
+        train_dataset.samples=tmp_data
+        train_dataset.targets= tmp_targets
+
+    else:
+        train_dataset.data= train_dataset.data[train_idx]
+    
+    if opt.dataset=="tiny-imagenet-200":
+        pass
+    elif opt.dataset=="SVHN":
         train_dataset.labels= np.array(train_dataset.labels)[train_idx].tolist()
     else:
         train_dataset.targets= np.array(train_dataset.targets)[train_idx].tolist()
