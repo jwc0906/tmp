@@ -36,7 +36,7 @@ def parse_option():
 
     parser.add_argument('--print_freq', type=int, default=10,
                         help='print frequency')
-    parser.add_argument('--save_freq', type=int, default=50*20,
+    parser.add_argument('--save_freq', type=int, default=50,
                         help='save frequency')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='batch_size')
@@ -135,12 +135,14 @@ def parse_option():
             opt.warmup_to = opt.learning_rate
     
     opt.model_name= '{}_ir_{}_td_{}_scale_{}'.format(opt.model_name, opt.imbalance_ratio, opt.total_data_num, opt.scale)
-
-    opt.tb_folder = os.path.join(opt.tb_path, opt.model_name)
+    
+    
+    
+    opt.tb_folder = os.path.join(opt.tb_path, opt.dir_path.split('/')[-1]+"_scale_"+str(opt.scale))
     if not os.path.isdir(opt.tb_folder):
         os.makedirs(opt.tb_folder)
 
-    opt.save_folder = os.path.join(opt.model_path, opt.model_name)
+    opt.save_folder = os.path.join(opt.model_path, opt.dir_path.split('/')[-1]+"_scale_"+str(opt.scale))
     if not os.path.isdir(opt.save_folder):
         os.makedirs(opt.save_folder)
 
