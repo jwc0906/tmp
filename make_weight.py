@@ -12,7 +12,7 @@ from torchvision import transforms, datasets
 from util import AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer
-from networks.resnet_big_unnorm import SupConResNet, LinearClassifier
+from networks.supcon_net import SupConResNet, LinearClassifier
 
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
@@ -21,11 +21,7 @@ import numpy as np
 #DIR_PATH= "./save/SupCon/MNIST_models/SimCLR_MNIST_resnet18_mnist_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_150.0_td_10000"
 #DIR_PATH= './save/SupCon/MNIST_models/SimCLR_MNIST_resnet18_mnist_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_150.0_td_10000_saltandpapper'
 #DIR_PATH= "./save/SupCon/VECTOR_models/SimCLR_VECTOR_fnn3_mnist_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_None_td_None_aug_saltandpapper_AUGSTD_0.6"
-DIR_PATH= "./save/SupCon/MNIST_models/SimCLR_MNIST_resnet18_mnist_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_150.0_td_10000_0"
-INDEX_PATH= DIR_PATH+"/index.npy"
-CKPT_PATH= DIR_PATH+"/last.pth"
-DATA_X_PATH= DIR_PATH+"/data_x.npy"
-DATA_Y_PATH= DIR_PATH+"/data_y.npy"
+#DIR_PATH= "./save/SupCon/MNIST_models/SimCLR_MNIST_resnet18_mnist_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_150.0_td_10000_0"
 
 
 try:
@@ -73,6 +69,9 @@ def parse_option():
 
     parser.add_argument('--ckpt', type=str, default='',
                         help='path to pre-trained model')
+    
+    ###
+    parser.add_argument('--dir_path', type=str)
 
     opt = parser.parse_args()
 
@@ -120,12 +119,12 @@ def parse_option():
 
 
 def set_model(opt):
-    model = SupConResNet(name=opt.model)
+    model = SupConResNet(name=opt.model, is_norm=False)
     criterion = torch.nn.CrossEntropyLoss()
 
     classifier = LinearClassifier(name=opt.model, num_classes=opt.n_cls)
-    
-    ckpt = torch.load(CKPT_PATH, map_location='cpu')
+
+    ckpt = torch.load(opt.dir_path+"/last.pth", map_location='cpu')
     state_dict = ckpt['model']
     
     if torch.cuda.is_available():
@@ -150,20 +149,6 @@ def set_model(opt):
 
 
 
-class CustomDataset(Dataset):
-    def __init__(self, transform, opt):
-        # dataset
-        self.transform= transform
-        #load	
-        self.data_x= np.load(DATA_X_PATH)
-        self.data_y= np.load(DATA_Y_PATH)
-
-    def __len__(self):
-        return self.data_x.shape[0]
-    def __getitem__(self,idx):
-        x= self.transform(self.data_x[idx])
-        y= self.data_y[idx]
-        return x, y
 
 
 
@@ -196,34 +181,32 @@ def main():
     import numpy as np
     normalize = transforms.Normalize(mean=mean, std=std)
     
-    if opt.dataset =="VECTOR":
-        standard_transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.ToTensor(),
-            normalize,
-        ])
-    else:
-        standard_transform = transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])
-
+    standard_transform = transforms.Compose([
+        transforms.ToTensor(),
+        normalize,
+    ])
     
     
     if opt.dataset == "SVHN":
         train_dataset = datasets.SVHN(root=opt.data_folder,transform=standard_transform,download=True, split="train")
-    elif opt.dataset == "MNIST":
-        train_dataset = datasets.MNIST(root=opt.data_folder,transform=standard_transform,download=True, train=True)
-    elif opt.dataset== "VECTOR":
-        train_dataset= CustomDataset(transform= standard_transform, opt=opt)
+    elif opt.dataset == 'cifar10':
+        train_dataset = datasets.CIFAR10(root=opt.data_folder,
+                                         transform=standard_transform,
+                                         download=True)
+    elif opt.dataset == 'cifar100':
+        train_dataset = datasets.CIFAR100(root=opt.data_folder,
+                                          transform=standard_transform,
+                                          download=True)
+    elif opt.dataset == 'SVHN':
+        train_dataset= datasets.SVHN(root=opt.data_folder, transform=standard_transform, download=True)
 
-    if opt.dataset !="VECTOR":  
-        train_idx=np.load(INDEX_PATH)
-        train_dataset.data= train_dataset.data[train_idx]
+
+    train_idx=np.load(opt.dir_path+"/index.npy")
+    train_dataset.data= train_dataset.data[train_idx]
     
     if opt.dataset=="SVHN":
         train_dataset.labels= np.array(train_dataset.labels)[train_idx].tolist()
-    elif opt.dataset=="MNIST":
+    else:
         train_dataset.targets= np.array(train_dataset.targets)[train_idx].tolist()
 
     train_loader = torch.utils.data.DataLoader(
@@ -235,16 +218,14 @@ def main():
     total_outputs = torch.zeros(dataset_len, 128)
     if opt.model == "resnet50":
         total_features = torch.zeros(dataset_len, 2048)
-    else:
+    elif opt.model == "VGG19":
         total_features = torch.zeros(dataset_len, 512)
     top = 0
     
     if opt.dataset=="SVHN":
         total_labels= np.array(train_dataset.labels)
-    elif opt.dataset=="MNIST":
+    else:
         total_labels= np.array(train_dataset.targets)
-    elif opt.dataset=="VECTOR":
-        total_labels=train_dataset.data_y
 
     for idx, (images, labels) in enumerate(train_loader):
         print(idx)
@@ -255,7 +236,7 @@ def main():
         # compute loss
 
         with torch.no_grad():
-            features = model.encoder(images) #2048
+            features = model.encoder(images) #2048i or 512
             outputs = model(images)  # 128
             total_outputs[top:top + bsz] = outputs
             total_features[top:top+bsz] = features
@@ -276,7 +257,6 @@ def main():
     for i in range(opt.n_cls):
         l2_norm= np.linalg.norm(total_features[total_labels==i],2,1)
         print(str(i), "norm_mean:", l2_norm.mean(),"norm_std:", l2_norm.std())
-    import pdb; pdb.set_trace()
 
     
     ###############
@@ -284,10 +264,9 @@ def main():
     ###############
 
 
-    np.save(DIR_PATH+"/weight.npy",  np.linalg.norm(total_outputs,2,1))
-    print("save!")
+    np.save(opt.dir_path+"/weight.npy",  np.linalg.norm(total_outputs,2,1))
+    print("weight save!")
 
-    import pdb; pdb.set_trace()
 
 
 if __name__ == '__main__':

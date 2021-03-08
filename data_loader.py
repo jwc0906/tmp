@@ -18,7 +18,7 @@ import numpy as np
 
 from util import TwoCropTransform
 
-def set_loader(opt):
+def set_loader(opt, stage=1):
     # construct data loader
     if opt.dataset == 'cifar10':
         mean = (0.4914, 0.4822, 0.4465)
@@ -34,6 +34,10 @@ def set_loader(opt):
         mean= (0.5, 0.5, 0.5)
         std= (0.5, 0.5, 0.5)
         opt.size= 32
+    elif opt.dataset == "tiny-imagenet-200":
+        mean= (0.485, 0.456, 0.406)
+        std= (0.229, 0.224, 0.225)
+        opt.size= 64
         
     elif opt.dataset == 'path':
         mean = eval(opt.mean)
@@ -42,90 +46,118 @@ def set_loader(opt):
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
     normalize = transforms.Normalize(mean=mean, std=std)
+    
+    if stage==-1:
+        standard_transform = transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])
 
-    train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomApply([
-            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
-        ], p=0.8),
-        transforms.RandomGrayscale(p=0.2),
-        transforms.ToTensor(),
-        normalize,
-    ])
+    else:
+        train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomApply([
+                transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+            ], p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.ToTensor(),
+            normalize,
+        ])
 
     if opt.dataset == 'cifar10':
         train_dataset = datasets.CIFAR10(root=opt.data_folder,
                                          transform=TwoCropTransform(train_transform),
                                          download=True)
         opt.class_num= 10	
-
+    
     elif opt.dataset == 'cifar100':
         train_dataset = datasets.CIFAR100(root=opt.data_folder,
                                           transform=TwoCropTransform(train_transform),
                                           download=True)
         opt.class_num= 100
-
+    
     elif opt.dataset == 'SVHN':
         train_dataset= datasets.SVHN(root=opt.data_folder, transform=TwoCropTransform(train_transform), download=True)
         opt.class_num= 10
-
-    elif opt.dataset == 'path':
-        train_dataset = datasets.ImageFolder(root=opt.data_folder,
+     
+    elif opt.dataset == 'tiny-imagenet-200':
+        train_dataset = datasets.ImageFolder(root=opt.data_folder+"/tiny-imagenet-200",
                                             transform=TwoCropTransform(train_transform))
+        opt.class_num=200
     else:
         raise ValueError(opt.dataset)
     
-    ### imbalance ratio
+    if stage==1:
+        ### imbalance ratio
 
-    imbalance_ratio=opt.imbalance_ratio
-    class_num=opt.class_num
-    imbalance_r= math.pow(imbalance_ratio, 1/(class_num-1))
-    total_data_num=opt.total_data_num
+        imbalance_ratio=opt.imbalance_ratio
+        class_num=opt.class_num
+        imbalance_r= math.pow(imbalance_ratio, 1/(class_num-1))
+        total_data_num=opt.total_data_num
 
-    if imbalance_ratio==1:
-        labelNum= [total_data_num//class_num]*class_num
-    else:
-        initial=0
-        totals=[]
-        total=0
-        while True:
-            preLabelNum=[]
-            initial+=0.0001
+        if imbalance_ratio==1:
+            labelNum= [total_data_num//class_num]*class_num
+        else:
+            initial=0
+            totals=[]
             total=0
-            for i in range(class_num):
-                item= initial*math.pow(imbalance_r, i)
-                total+=item
-                preLabelNum.append(item)
-            labelNum=[round(i) for i in preLabelNum]
-            if sum(labelNum)>=total_data_num:
-                break
+            while True:
+                preLabelNum=[]
+                initial+=0.0001
+                total=0
+                for i in range(class_num):
+                    item= initial*math.pow(imbalance_r, i)
+                    total+=item
+                    preLabelNum.append(item)
+                labelNum=[round(i) for i in preLabelNum]
+                if sum(labelNum)>=total_data_num:
+                    break
 
         
-        if opt.imbalance_order=="descent":
-            labelNum.reverse()
+            if opt.imbalance_order=="descent":
+                labelNum.reverse()
     
-    print("[Imbalance ratio]", imbalance_ratio)
-    print(labelNum)
-    print(sum(labelNum))
+        print("[Imbalance ratio]", imbalance_ratio)
+        print(labelNum)
+        print(sum(labelNum))
+        
+        import pdb; pdb.set_trace()
+        if opt.dataset=='SVHN':
+            labels= np.array(train_dataset.labels)
+        else:
+            labels= np.array(train_dataset.targets)
+
+        lst = []
+        top=0
+        for i in range(class_num):
+            idx= np.arange(len(labels))[labels==i]
+            selectedIdx = np.random.choice(idx, labelNum[i], replace=False).tolist()
+            lst += selectedIdx
+            top+=labelNum[i]
+
+        lst= np.array(lst)
+        np.save(os.path.join(opt.model_path, opt.model_name)+"/index.npy", lst)
+        
+        train_sampler=None
     
-    if opt.dataset=='SVHN':
-        labels= np.array(train_dataset.labels)
-    else:
-        labels= np.array(train_dataset.targets)
+    elif stage==-1:
+        lst=np.load(opt.dir_path+"/index.npy")
 
-    lst = []
-    top=0
-    for i in range(class_num):
-        idx= np.arange(len(labels))[labels==i]
-        selectedIdx = np.random.choice(idx, labelNum[i], replace=False).tolist()
-        lst += selectedIdx
-        top+=labelNum[i]
-
-    lst= np.array(lst)
-    np.save(os.path.join(opt.model_path, opt.model_name)+"/index.npy", lst)
-
-
+    elif stage==2:
+        ### loaded index
+        lst=np.load(opt.dir_path+"/index.npy")
+        print(lst)
+        labelProb=1/np.load(opt.dir_path+"/weight.npy")
+        interval= labelProb.max()- labelProb.min()
+        labelProb= (labelProb - labelProb.min())/interval
+        
+        labelProb*= opt.scale
+        labelProb+=0.01
+        
+        train_sampler = torch.utils.data.WeightedRandomSampler(labelProb, lst.shape[0], replacement=False)
+        train_sampler = torch.utils.data.BatchSampler(train_sampler, batch_size= opt.batch_size, drop_last=False)
+    
     if opt.dataset=='SVHN':
         labels= np.array(train_dataset.labels)
     else:
@@ -138,11 +170,22 @@ def set_loader(opt):
     else:
         train_dataset.targets= labels[lst].tolist()
 
+    if stage==-1:
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=opt.batch_size, shuffle=False,
+            num_workers=opt.num_workers, drop_last=False, pin_memory=True)
 
-    train_sampler = None
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=opt.batch_size, shuffle=True,
-        num_workers=opt.num_workers, pin_memory=True, sampler=train_sampler)
+    elif stage==1:
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=opt.batch_size, shuffle=True,
+            num_workers=opt.num_workers, pin_memory=True, sampler=train_sampler)
+
+    elif stage==2:
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, shuffle=False,
+            num_workers=opt.num_workers, pin_memory=True, batch_sampler=train_sampler)
+
+
 
 
     return train_loader

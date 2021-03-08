@@ -18,8 +18,9 @@ from util import set_optimizer, save_model
 from networks.resnet_big import SupConResNet
 from losses import SupConLoss
 
+from data_loader import set_loader
 
-DIR_PATH= './save/SupCon/SVHN_models/SimCLR_SVHN_resnet50_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_1.0_td_10000'
+# DIR_PATH= './save/SupCon/SVHN_models/SimCLR_SVHN_resnet50_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_1.0_td_10000'
 
 
 
@@ -33,7 +34,7 @@ except ImportError:
 def parse_option():
     parser = argparse.ArgumentParser('argument for training')
 
-    parser.add_argument('--print_freq', type=int, default=10*20,
+    parser.add_argument('--print_freq', type=int, default=10,
                         help='print frequency')
     parser.add_argument('--save_freq', type=int, default=50*20,
                         help='save frequency')
@@ -59,7 +60,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100', 'SVHN', 'path'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'SVHN', 'tiny-imagenet-200'], help='dataset')
     parser.add_argument('--mean', type=str, help='mean of dataset in path in form of str tuple')
     parser.add_argument('--std', type=str, help='std of dataset in path in form of str tuple')
     parser.add_argument('--data_folder', type=str, default=None, help='path to custom dataset')
@@ -89,8 +90,8 @@ def parse_option():
     parser.add_argument('--total_data_num', type=int, help='imbalance_ratio')
     
     # index
-    parser.add_argument('--index_path', type=str, help='index_path')
-    
+    parser.add_argument('--dir_path', type=str, help='dir_path')
+    parser.add_argument('--scale', type=float, help='scale')    
 
 
     opt = parser.parse_args()
@@ -125,7 +126,7 @@ def parse_option():
     if opt.warm:
         opt.model_name = '{}_warm'.format(opt.model_name)
         opt.warmup_from = 0.01
-        opt.warm_epochs = 10 * 20
+        opt.warm_epochs = 10
         if opt.cosine:
             eta_min = opt.learning_rate * (opt.lr_decay_rate ** 3)
             opt.warmup_to = eta_min + (opt.learning_rate - eta_min) * (
@@ -133,7 +134,7 @@ def parse_option():
         else:
             opt.warmup_to = opt.learning_rate
     
-    opt.model_name= '{}_ir_{}_td_{}'.format(opt.model_name, opt.imbalance_ratio, opt.total_data_num)
+    opt.model_name= '{}_ir_{}_td_{}_scale_{}'.format(opt.model_name, opt.imbalance_ratio, opt.total_data_num, opt.scale)
 
     opt.tb_folder = os.path.join(opt.tb_path, opt.model_name)
     if not os.path.isdir(opt.tb_folder):
@@ -145,7 +146,7 @@ def parse_option():
 
     return opt
 
-
+"""
 def set_loader(opt):
     # construct data loader
     if opt.dataset == 'cifar10':
@@ -192,10 +193,10 @@ def set_loader(opt):
         raise ValueError(opt.dataset)
 
     ### loaded index
-    lst=np.load(DIR_PATH+"/index.npy")
+    lst=np.load(opt.dir_path+"/index.npy")
     
 
-    labelProb=1/np.load(DIR_PATH+"/weight.npy")
+    labelProb=1/np.load(opt.dir_path+"/weight.npy")
     interval= labelProb.max()- labelProb.min()
     labelProb= (labelProb - labelProb.min())/interval
     labelProb*=9
@@ -219,7 +220,7 @@ def set_loader(opt):
 
     return train_loader
 
-
+"""
 
 
 
@@ -289,7 +290,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
         end = time.time()
 
         # print info
-        if (epoch + 1) % opt.print_freq == 0:
+        if (idx + 1) % opt.print_freq == 0:
             print('Train: [{0}][{1}/{2}]\t'
                   'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
@@ -305,7 +306,7 @@ def main():
     opt = parse_option()
 
     # build data loader
-    train_loader = set_loader(opt)
+    train_loader = set_loader(opt, stage=2)
     print("loader complete")
     # build model and criterion
     model, criterion = set_model(opt)
@@ -317,7 +318,7 @@ def main():
     logger = tb_logger.Logger(logdir=opt.tb_folder, flush_secs=2)
     print("1")
     # training routine
-    for epoch in range(1, opt.epochs*20 + 1):
+    for epoch in range(1, opt.epochs + 1):
         adjust_learning_rate(opt, optimizer, epoch)
         # train for one epoch
         time1 = time.time()
