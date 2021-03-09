@@ -150,9 +150,9 @@ def set_loader(opt, stage=1):
         labelProb=1/np.load(opt.dir_path+"/weight.npy")
         interval= labelProb.max()- labelProb.min()
         labelProb= (labelProb - labelProb.min())/interval
-        
-        labelProb*= opt.scale
-        labelProb+=0.01
+         
+        labelProb*= (opt.scale-1)
+        labelProb+=1
         
         train_sampler = torch.utils.data.WeightedRandomSampler(labelProb, lst.shape[0], replacement=False)
         train_sampler = torch.utils.data.BatchSampler(train_sampler, batch_size= opt.batch_size, drop_last=False)
