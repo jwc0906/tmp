@@ -50,7 +50,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100', 'SVHN', 'MNIST', 'VECTOR'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'SVHN', 'MNIST', 'VECTOR', 'tiny-imagenet-200'], help='dataset')
 
     # other setting
     parser.add_argument('--cosine', action='store_true',
@@ -100,6 +100,8 @@ def parse_option():
         opt.n_cls=10
     elif opt.dataset=='VECTOR':
         opt.n_cls=3
+    elif opt.dataset=="tiny-imagenet-200":
+        opt.n_cls=200
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
 
@@ -240,7 +242,7 @@ def final_validate(val_loader, model, classifier, criterion, opt):
     top1 = AverageMeter()
 
     import numpy as np
-    resultTable = np.zeros((10,10), dtype=int)
+    resultTable = np.zeros((opt.n_cls,opt.n_cls), dtype=int)
 
     with torch.no_grad():
         end = time.time()
@@ -284,7 +286,7 @@ def main():
 
     # build data loader
     train_loader, val_loader = set_loader(opt)
-
+    
     # build model and criterion
     model, classifier, criterion = set_model(opt)
 

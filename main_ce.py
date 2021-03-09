@@ -133,6 +133,10 @@ def set_loader(opt):
         opt.size=28
         mean= (0.5,)
         std= (0.5,)
+    elif opt.dataset == "tiny-imagenet-200":
+        mean= (0.485, 0.456, 0.406)
+        std= (0.229, 0.224, 0.225)
+        opt.size= 64        
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
     normalize = transforms.Normalize(mean=mean, std=std)
@@ -175,6 +179,16 @@ def set_loader(opt):
     elif opt.dataset=="MNIST":
         train_dataset= datasets.MNIST(root=opt.data_folder, transform=train_transform, train=True, download=True)
         val_dataset= datasets.MNIST(root=opt.data_folder, transform=val_transform, train=False, download=True)
+    elif opt.dataset=="tiny-imagenet-200":
+        train_dataset = datasets.ImageFolder(
+                root=opt.data_folder+"/tiny-imagenet-200/train",
+                transform=TwoCropTransform(train_transform)
+                )
+        
+        val_dataset = datasets.ImageFolder(
+                root=opt.data_folder+"/tiny-imagenet-200/test",
+                transform=TwoCropTransform(train_transform)
+                )
 
     else:
         raise ValueError(opt.dataset)
