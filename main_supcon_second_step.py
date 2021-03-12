@@ -20,7 +20,6 @@ from losses import SupConLoss
 
 from data_loader import set_loader
 
-# DIR_PATH= './save/SupCon/SVHN_models/SimCLR_SVHN_resnet50_lr_0.5_decay_0.0001_bsz_512_temp_0.5_trial_0_cosine_warm_ir_1.0_td_10000'
 
 
 
@@ -92,7 +91,7 @@ def parse_option():
     # index
     parser.add_argument('--dir_path', type=str, help='dir_path')
     parser.add_argument('--scale', type=float, help='scale')    
-
+    parser.add_argument('--step2_method' ,type=int, help='step2_method')
 
     opt = parser.parse_args()
 
@@ -134,15 +133,15 @@ def parse_option():
         else:
             opt.warmup_to = opt.learning_rate
     
-    opt.model_name= '{}_ir_{}_td_{}_scale_{}'.format(opt.model_name, opt.imbalance_ratio, opt.total_data_num, opt.scale)
+    opt.model_name= '{}_ir_{}_td_{}_step2method_{}_scale_{}'.format(opt.model_name, opt.imbalance_ratio, opt.total_data_num, opt.step2_method, opt.scale)
     
     
     
-    opt.tb_folder = os.path.join(opt.tb_path, opt.dir_path.split('/')[-1]+"_scale_"+str(opt.scale))
+    opt.tb_folder = os.path.join(opt.tb_path, opt.dir_path.split('/')[-1]+"step2_method"+str(opt.step2_method)+"_scale_"+str(opt.scale))
     if not os.path.isdir(opt.tb_folder):
         os.makedirs(opt.tb_folder)
 
-    opt.save_folder = os.path.join(opt.model_path, opt.dir_path.split('/')[-1]+"_scale_"+str(opt.scale))
+    opt.save_folder = os.path.join(opt.model_path, opt.dir_path.split('/')[-1]+"step2_method"+str(opt.step2_method)+"_scale_"+str(opt.scale))
     if not os.path.isdir(opt.save_folder):
         os.makedirs(opt.save_folder)
 

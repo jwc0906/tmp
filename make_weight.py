@@ -277,12 +277,16 @@ def main():
     for i in range(opt.n_cls):
         l2_norm= np.linalg.norm(total_outputs[total_labels==i],2,1)
         print(str(i), "norm_mean:", l2_norm.mean(), "norm_std:", l2_norm.std())
-
+        print(np.sort(l2_norm)[0],'|', np.sort(l2_norm)[-1])
     print("each class feature vector size mean")
     for i in range(opt.n_cls):
         l2_norm= np.linalg.norm(total_features[total_labels==i],2,1)
         print(str(i), "norm_mean:", l2_norm.mean(),"norm_std:", l2_norm.std())
-
+    
+    print('min/max norm size')
+    l2_norm= np.linalg.norm(total_outputs,2,1)
+    print("max/min: ", np.sort(l2_norm)[-1]/np.sort(l2_norm)[0])
+    print("max/min (100 mean): ", np.sort(l2_norm)[-100:].mean() / np.sort(l2_norm)[:100].mean())
     
     ###############
     # make weight #

@@ -90,6 +90,11 @@ def set_loader(opt, stage=1):
     
     if stage==1:
         ### imbalance ratio
+        # alert
+        if len(opt.imbalance_order) !=10:
+            print("###len(opt.imbalance_order) !=10###")
+            return 0
+
 
         imbalance_ratio=opt.imbalance_ratio
         class_num=opt.class_num
@@ -115,8 +120,7 @@ def set_loader(opt, stage=1):
                     break
 
         
-            if opt.imbalance_order=="descent":
-                labelNum.reverse()
+            labelNum.reverse()
     
         print("[Imbalance ratio]", imbalance_ratio)
         print(labelNum)
@@ -130,12 +134,18 @@ def set_loader(opt, stage=1):
         lst = []
         top=0
         for i in range(class_num):
-            idx= np.arange(len(labels))[labels==i]
+            idx= np.arange(len(labels))[labels==int(opt.imbalance_order[i])]
             selectedIdx = np.random.choice(idx, labelNum[i], replace=False).tolist()
             lst += selectedIdx
             top+=labelNum[i]
-        
+         
         lst= np.array(lst)
+        
+        ### check
+        print("[real class num ratio]")
+        for i in range(class_num):
+            print((labels[lst]==i).sum())
+         
         np.save(os.path.join(opt.model_path, opt.model_name)+"/index.npy", lst)
         
         train_sampler=None
@@ -148,11 +158,17 @@ def set_loader(opt, stage=1):
         lst=np.load(opt.dir_path+"/index.npy")
         print(lst)
         labelProb=1/np.load(opt.dir_path+"/weight.npy")
-        interval= labelProb.max()- labelProb.min()
-        labelProb= (labelProb - labelProb.min())/interval
+        if opt.step2_method==1:
+            pass
+        elif opt.step2_method==2:
+            labelProb= np.sqrt(labelProb)
+        elif opt.step2_method==3:
+
+            interval= labelProb.max()- labelProb.min()
+            labelProb= (labelProb - labelProb.min())/interval
          
-        labelProb*= (opt.scale-1)
-        labelProb+=1
+            labelProb*= (opt.scale-1)
+            labelProb+=1
         
         train_sampler = torch.utils.data.WeightedRandomSampler(labelProb, lst.shape[0], replacement=False)
         train_sampler = torch.utils.data.BatchSampler(train_sampler, batch_size= opt.batch_size, drop_last=False)

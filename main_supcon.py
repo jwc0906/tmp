@@ -87,7 +87,7 @@ def parse_option():
     parser.add_argument('--imbalance_ratio', type=float, help='imbalance_ratio')
     parser.add_argument('--class_num', type=int, help='imbalance_ratio')
     parser.add_argument('--total_data_num', type=int, help='imbalance_ratio')
-    parser.add_argument('--imbalance_order', type=str, default='ascent', choices=['ascent', 'descent'])
+    parser.add_argument('--imbalance_order', type=str, help='imbalance_ratio')
     
     #aug
     parser.add_argument('--aug', type=str, default='simclr')
