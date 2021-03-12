@@ -7,12 +7,6 @@ conda install pytorch==1.7.1 torchvision==0.8.2 torchaudio==0.7.2 cudatoolkit=10
 ```
 
 
-tiny-imagenet-200 downloader:  
-run this code at this dir ./datasets/  
-https://gist.github.com/moskomule/2e6a9a463f50447beca4e64ab4699ac4  
-
-
-
 
 step1 * 4:
 ```
